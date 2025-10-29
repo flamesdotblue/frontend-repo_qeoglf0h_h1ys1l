@@ -1,28 +1,100 @@
-import { useState } from 'react'
+import React, { useMemo, useState } from 'react';
+import Header from './components/Header.jsx';
+import SummaryCards from './components/SummaryCards.jsx';
+import AccountManager from './components/AccountManager.jsx';
+import EntriesPanel from './components/EntriesPanel.jsx';
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [accounts, setAccounts] = useState([]);
+  const [entries, setEntries] = useState([]);
+  const [filterDate, setFilterDate] = useState('');
+
+  const addAccount = (account) => {
+    setAccounts((prev) => [...prev, { ...account, id: crypto.randomUUID() }]);
+  };
+
+  const removeAccount = (id) => {
+    setAccounts((prev) => prev.filter((a) => a.id !== id));
+    // Also remove related entries to keep view clean
+    setEntries((prev) => prev.filter((e) => e.accountId !== id));
+  };
+
+  const addEntry = (entry) => {
+    setEntries((prev) => [
+      { id: crypto.randomUUID(), ...entry },
+      ...prev,
+    ]);
+  };
+
+  const filteredEntries = useMemo(() => {
+    return entries.filter((e) => (filterDate ? e.date === filterDate : true));
+  }, [entries, filterDate]);
+
+  const metrics = useMemo(() => {
+    if (filteredEntries.length === 0) {
+      return {
+        totalPnl: 0,
+        weightedRoc: 0,
+        accountsInvolved: 0,
+        best: null,
+        worst: null,
+      };
+    }
+
+    let totalPnl = 0;
+    let totalCapitalWeighted = 0;
+
+    const entriesWithCalc = filteredEntries.map((e) => {
+      const acc = accounts.find((a) => a.id === e.accountId);
+      const capital = acc ? Number(acc.capital) : 0;
+      const pnl = Number(e.pnl);
+      const roc = capital !== 0 ? (pnl / capital) * 100 : 0;
+      return { ...e, capital, roc, pnl };
+    });
+
+    entriesWithCalc.forEach((row) => {
+      totalPnl += row.pnl;
+      totalCapitalWeighted += row.capital;
+    });
+
+    const weightedRoc = totalCapitalWeighted !== 0 ? (totalPnl / totalCapitalWeighted) * 100 : 0;
+
+    const sortedByPnl = [...entriesWithCalc].sort((a, b) => b.pnl - a.pnl);
+
+    return {
+      totalPnl,
+      weightedRoc,
+      accountsInvolved: new Set(entriesWithCalc.map((r) => r.accountId)).size,
+      best: sortedByPnl[0] || null,
+      worst: sortedByPnl[sortedByPnl.length - 1] || null,
+    };
+  }, [filteredEntries, accounts]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center">
-      <div className="bg-white p-8 rounded-lg shadow-lg">
-        <h1 className="text-3xl font-bold text-gray-800 mb-4">
-          Vibe Coding Platform
-        </h1>
-        <p className="text-gray-600 mb-6">
-          Your AI-powered development environment
-        </p>
-        <div className="text-center">
-          <button
-            onClick={() => setCount(count + 1)}
-            className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded"
-          >
-            Count is {count}
-          </button>
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-800">
+      <Header />
+
+      <main className="mx-auto max-w-6xl px-4 py-6 space-y-6">
+        <SummaryCards metrics={metrics} accounts={accounts} />
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-1 space-y-6">
+            <AccountManager onAdd={addAccount} onRemove={removeAccount} accounts={accounts} />
+          </div>
+
+          <div className="lg:col-span-2">
+            <EntriesPanel
+              accounts={accounts}
+              onAddEntry={addEntry}
+              entries={entries}
+              setFilterDate={setFilterDate}
+              filterDate={filterDate}
+            />
+          </div>
         </div>
-      </div>
+      </main>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
